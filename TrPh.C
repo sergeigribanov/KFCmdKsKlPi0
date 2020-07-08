@@ -14,6 +14,7 @@
 #include "TrPh.h"
 
 #include <KFCmd/HypoKsKlPi0.hpp>
+#include <KFCmd/HypoKsKlPi0Pi0Loosen.hpp>
 
 const double TrPh::_dZ = 30;
 const double TrPh::_dRho = 30;
@@ -79,16 +80,30 @@ void TrPh::Loop(const std::string& outpath, double magneticField) {
   TH1F h_kf_chi2("h_kf_chi2", "", 150, 0, 300);
   TH1F h_vtx_dr("h_vtx_dr", "", 120, 0, 30);
   TH1F h_dirang("h_dirang", "", 128, 0, TMath::Pi());
+  TH1F h_finalstate_id("h_finalstate_id", "", 100, 0, 100);
   TH1F h_vtx0_z("h_vtx0_z", "", 1000, -50, 50);
   TH1F h_vtx1_z("h_vtx1_z", "", 1000, -50, 50);
+  TH1F h_kf1_err("h_kf1_err", "", 4, 0, 4);
+  TH1F h_kf1_chi2("h_kf1_chi2", "", 1000, 0, 1000);
   TH2F h_vtx0_xy("h_vtx0_xy", "", 1000, -10, 10, 1000, -10, 10);
   TH2F h_vtx1_xy("h_vtx1_xy", "", 1000, -10, 10, 1000, -10, 10);
   fChain->GetEntry(0);
   KFCmd::HypoKsKlPi0 hypo(2 * emeas, magneticField);
   hypo.setBeamXY(xbeam, ybeam);
+  // hypo.disableFlowConstraintXYZ("ks-flow");
   hypo.fixVertexComponent("vtx0", xbeam, KFBase::VERTEX_X);
   hypo.fixVertexComponent("vtx0", ybeam, KFBase::VERTEX_Y);
-  double kf_chi2;
+
+  KFCmd::HypoKsKlPi0Pi0Loosen hypo1(2 * emeas, magneticField);
+  hypo1.setBeamXY(xbeam, ybeam);
+  // hypo1.disableFlowConstraintXYZ("ks-flow");
+  hypo1.enableConstraint("m-pi0-constraint");
+  hypo1.fixVertexComponent("vtx0", xbeam, KFBase::VERTEX_X);
+  hypo1.fixVertexComponent("vtx0", ybeam, KFBase::VERTEX_Y);
+  
+  double kf_chi2 = std::numeric_limits<double>::infinity();;
+  double kf1_err = 1;
+  double kf1_chi2 = std::numeric_limits<double>::infinity();;
   double in_mks = 0;
   double kf_mks = 0;
   double in_mgg = 0;
@@ -150,6 +165,16 @@ void TrPh::Loop(const std::string& outpath, double magneticField) {
 	TVector3 ta = vtx1 - vtx0;
 	TVector3 tb = hypo.getFinalMomentum(sKs).Vect();
 	dirang = TMath::ACos((ta * tb) / ta.Mag() / tb.Mag());
+
+	kf1_err = 1;
+	kf_chi2 = std::numeric_limits<double>::infinity();
+	hypo1.fillTrack("pi-_1", _trackIndices[0], *this);
+	hypo1.fillTrack("pi+_1", _trackIndices[1], *this);
+	hypo1.fillPhoton("g0", _photonIndices[iph], *this);
+	hypo1.fillPhoton("g1", _photonIndices[jph], *this);
+	hypo1.optimize();
+	kf1_err = hypo1.getErrorCode();
+	kf1_chi2 = hypo1.getChiSquare();
       }
     }
 
@@ -160,10 +185,13 @@ void TrPh::Loop(const std::string& outpath, double magneticField) {
     h_kf_mgg.Fill(kf_mgg);
     h_vtx_dr.Fill(vtx_dr);
     h_dirang.Fill(dirang);
+    h_finalstate_id.Fill(finalstate_id);
     h_vtx0_z.Fill(vtx0_z);
     h_vtx1_z.Fill(vtx1_z);
     h_vtx0_xy.Fill(vtx0_x, vtx0_y);
     h_vtx1_xy.Fill(vtx1_x, vtx1_y);
+    h_kf1_err.Fill(kf1_err);
+    h_kf1_chi2.Fill(kf1_chi2);
   }
   outfl->cd();
   h_kf_chi2.Write();
@@ -173,10 +201,13 @@ void TrPh::Loop(const std::string& outpath, double magneticField) {
   h_kf_mgg.Write();
   h_vtx_dr.Write();
   h_dirang.Write();
+  h_finalstate_id.Write();
   h_vtx0_z.Write();
   h_vtx1_z.Write();
   h_vtx0_xy.Write();
   h_vtx1_xy.Write();
+  h_kf1_err.Write();
+  h_kf1_chi2.Write();
   outfl->Close();
   delete outfl;
 }
